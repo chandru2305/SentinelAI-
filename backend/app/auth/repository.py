@@ -17,12 +17,14 @@ class SQLAlchemyUserRepository:
         self._ensure_default_admin()
 
     def _ensure_default_admin(self) -> None:
-        if self.get_user_by_username_or_email("admin") is None:
+        from app.core.config import settings
+        
+        if self.get_user_by_username_or_email(settings.admin_username) is None:
             self.create_user(
                 UserCreate(
-                    username="admin",
+                    username=settings.admin_username,
                     email="admin@sentinelai.local",
-                    password="admin123",
+                    password=settings.admin_password,
                     role=UserRole.admin,
                 )
             )

@@ -26,3 +26,18 @@ def get_auth_service(db: Session = Depends(get_db_session)) -> AuthService:
 
 def get_current_credentials(credentials: HTTPAuthorizationCredentials | None = Depends(security)) -> HTTPAuthorizationCredentials | None:
     return credentials
+
+
+from fastapi import HTTPException, status
+from app.auth.models import User
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(get_current_credentials),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> User:
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    user = auth_service.get_user_from_token(credentials.credentials)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    return user

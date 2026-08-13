@@ -5,28 +5,89 @@ import { authService } from '../../services/auth';
 const LoginPage = () => {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    await authService.login({ username_or_email: usernameOrEmail, password });
-    navigate('/me');
+    setError('');
+    setLoading(true);
+    try {
+      await authService.login({ username_or_email: usernameOrEmail, password });
+      navigate('/dashboard');
+    } catch {
+      setError('Invalid credentials. Please check your username and password.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div style={{ maxWidth: 360, margin: '3rem auto', padding: '2rem', border: '1px solid #ddd', borderRadius: 8 }}>
-      <h2>Login</h2>
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: '1rem' }}>
-          <label>Username or Email</label>
-          <input value={usernameOrEmail} onChange={(event) => setUsernameOrEmail(event.target.value)} style={{ width: '100%', padding: '0.5rem' }} />
+    <div className="login-page">
+      <div className="login-card animate-fadein-up">
+        <div className="login-header">
+          <div className="login-logo">🛡️</div>
+          <h1 className="login-title">SentinelAI</h1>
+          <p className="login-subtitle">Security Operations Center</p>
         </div>
-        <div style={{ marginBottom: '1rem' }}>
-          <label>Password</label>
-          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} style={{ width: '100%', padding: '0.5rem' }} />
-        </div>
-        <button type="submit" style={{ width: '100%', padding: '0.75rem' }}>Login</button>
-      </form>
+
+        <form className="login-form" onSubmit={handleSubmit}>
+          {error && <div className="login-error">{error}</div>}
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="login-username">
+              Username or Email
+            </label>
+            <input
+              id="login-username"
+              className="form-input"
+              type="text"
+              placeholder="admin@sentinelai.local"
+              value={usernameOrEmail}
+              onChange={(e) => setUsernameOrEmail(e.target.value)}
+              required
+              autoComplete="username"
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="login-password">
+              Password
+            </label>
+            <input
+              id="login-password"
+              className="form-input"
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
+          </div>
+
+          <button
+            id="login-submit-btn"
+            type="submit"
+            className="login-btn"
+            disabled={loading}
+          >
+            {loading ? 'Signing In…' : 'Sign In to SOC'}
+          </button>
+        </form>
+
+        <p
+          style={{
+            textAlign: 'center',
+            marginTop: 20,
+            fontSize: '0.75rem',
+            color: 'var(--text-muted)',
+          }}
+        >
+          SentinelAI v0.4.0 · Secured by AI-Powered Threat Detection
+        </p>
+      </div>
     </div>
   );
 };
