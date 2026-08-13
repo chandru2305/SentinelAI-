@@ -11,6 +11,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: '🛡️', category: 'Operations' },
+  { to: '/ai-security', label: 'AI Security Engine', icon: '⚡', category: 'AI Protection' },
   { to: '/threat-monitor', label: 'Threat Monitor', icon: '⚠️', badge: 14, category: 'Operations' },
   { to: '/incidents', label: 'Incidents', icon: '🚨', badge: 5, category: 'Operations' },
   { to: '/detection', label: 'Threat Detection', icon: '🛡️', category: 'Operations' },

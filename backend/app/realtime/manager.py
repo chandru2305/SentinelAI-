@@ -33,5 +33,22 @@ class ConnectionManager:
         for socket in disconnected_sockets:
             self.disconnect(socket)
 
+    def broadcast_sync(self, message: dict) -> None:
+        import asyncio
+        if not self.loop:
+            try:
+                self.loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+        
+        if self.loop and self.loop.is_running():
+            asyncio.run_coroutine_threadsafe(self.broadcast(message), self.loop)
+        else:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.broadcast(message))
+            except RuntimeError:
+                pass
+
 # Global instance of ConnectionManager
 manager = ConnectionManager()

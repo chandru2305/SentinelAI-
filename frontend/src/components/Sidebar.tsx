@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 
 const links = [
   { to: '/dashboard', label: 'Dashboard' },
+  { to: '/ai-security', label: 'AI Security Engine' },
   { to: '/ai-models', label: 'AI Models' },
   { to: '/ai-scanner', label: 'AI Scanner' },
   { to: '/detection-center', label: 'Detection Center' },

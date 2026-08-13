@@ -16,6 +16,7 @@ import ThreatHistory from './pages/Detection/ThreatHistory';
 import ThreatIntelligence from './pages/Detection/ThreatIntelligence';
 import ThreatStatistics from './pages/Detection/ThreatStatistics';
 import DetectionCenter from './pages/Detection/DetectionCenter';
+import AISecurityCenter from './pages/Detection/AISecurityCenter';
 import Reports from './pages/Dashboard/Reports';
 import ActivityLogs from './pages/Dashboard/ActivityLogs';
 import Settings from './pages/Dashboard/Settings';
@@ -33,6 +34,7 @@ const App = () => {
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<DashboardHome />} />
             
+            <Route path="/ai-security" element={<AISecurityCenter />} />
             <Route path="/ai-models" element={<AIModels />} />
             <Route path="/ai-scanner" element={<AIScan />} />
             <Route path="/detection-center" element={<DetectionCenter />} />
