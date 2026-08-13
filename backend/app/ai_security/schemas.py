@@ -41,3 +41,29 @@ class AISecurityMetricsResponse(BaseModel):
     jailbreak_attempts: int
     agent_violations: int
     avg_risk_score: float
+
+# ── Phase 3: Response Security & Data Exfiltration Schemas ───────────────
+
+class AISecurityIndicator(BaseModel):
+    type: str  # e.g., API_KEY, PRIVATE_KEY, JWT_TOKEN, DB_CREDENTIAL, PASSWORD
+    location: str  # e.g., response, code_block
+    masked_value: str  # e.g., sk-****7890
+
+class AISecurityResponseInspectRequest(BaseModel):
+    response: str = Field(..., min_length=1, max_length=32768, description="LLM generated output text to inspect")
+    context: Optional[str] = Field(None, max_length=8192, description="Optional prompt or interaction context")
+    model: Optional[str] = Field(None, max_length=128, description="Model identifier")
+
+class AISecurityResponseDecision(BaseModel):
+    safe: bool
+    threat_type: str
+    severity: str  # CRITICAL, HIGH, MEDIUM, LOW, SAFE
+    confidence: float  # 0.0 - 1.0
+    risk_score: int  # 0 - 100
+    policy_decision: str  # BLOCK, WARN, ALLOW
+    explanation: str
+    indicators: List[AISecurityIndicator]
+    recommended_actions: List[str]
+    model: Optional[str] = None
+    processing_time_ms: float
+    timestamp: str

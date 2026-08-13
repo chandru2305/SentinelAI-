@@ -32,6 +32,27 @@ export interface AISecurityMetrics {
   avg_risk_score: number;
 }
 
+export interface AISecurityIndicator {
+  type: string;
+  location: string;
+  masked_value: string;
+}
+
+export interface AISecurityResponseDecision {
+  safe: boolean;
+  threat_type: string;
+  severity: string;
+  confidence: number;
+  risk_score: number;
+  policy_decision: 'ALLOW' | 'WARN' | 'BLOCK';
+  explanation: string;
+  indicators: AISecurityIndicator[];
+  recommended_actions: string[];
+  model?: string;
+  processing_time_ms: number;
+  timestamp: string;
+}
+
 export const aiSecurityService = {
   async inspectPrompt(prompt: string, systemPrompt?: string, agentId?: string): Promise<AISecurityDecision> {
     const res = await ApiService.request<AISecurityDecision>('/ai-security/inspect-prompt', {
@@ -50,6 +71,16 @@ export const aiSecurityService = {
       body: JSON.stringify({ agent_id: agentId, tool_name: toolName, tool_arguments: toolArguments }),
     });
     if (res.error || !res.data) throw new Error(res.error || 'Failed to inspect agent action');
+    return res.data;
+  },
+
+  async inspectResponse(response: string, context?: string, model?: string): Promise<AISecurityResponseDecision> {
+    const res = await ApiService.request<AISecurityResponseDecision>('/ai-security/inspect-response', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ response, context, model }),
+    });
+    if (res.error || !res.data) throw new Error(res.error || 'Failed to inspect LLM response');
     return res.data;
   },
 

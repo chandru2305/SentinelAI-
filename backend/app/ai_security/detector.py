@@ -1,12 +1,46 @@
 import re
-from typing import Dict, List, Tuple, Any
-from app.ai_security.schemas import AISecurityMatch
+from typing import Dict, List, Tuple, Any, Optional
+from app.ai_security.schemas import AISecurityMatch, AISecurityIndicator
 
 class AISecurityDetector:
     """Specialized Heuristic & Pattern Inspector for AI Security Threats."""
 
     def __init__(self) -> None:
         pass
+
+    @staticmethod
+    def mask_secret(value: str, secret_type: str = "GENERIC") -> str:
+        """Safely redacts raw sensitive credentials for safe metadata persistence and WebSocket broadcasting."""
+        if not value:
+            return "[REDACTED]"
+        val = value.strip()
+        if secret_type == "API_KEY":
+            if val.startswith("sk-") and len(val) > 8:
+                return f"sk-****{val[-4:]}"
+            if val.startswith("AKIA") and len(val) > 8:
+                return f"AKIA****{val[-4:]}"
+            if val.startswith("ghp_") and len(val) > 8:
+                return f"ghp_****{val[-4:]}"
+            return f"{val[:3]}****{val[-3:]}" if len(val) >= 8 else "****"
+
+        if secret_type == "JWT_TOKEN":
+            parts = val.split(".")
+            if len(parts) >= 2:
+                p1 = parts[0][:4] if len(parts[0]) >= 4 else "eyJ"
+                return f"{p1}****.[REDACTED]"
+            return "eyJ****.[REDACTED]"
+
+        if secret_type == "PRIVATE_KEY":
+            return "-----BEGIN PRIVATE KEY... [REDACTED]-----"
+
+        if secret_type == "DB_CREDENTIAL":
+            # Mask username:password in database URLs (e.g., postgres://user:pass@host)
+            return re.sub(r"://([^:@\s]+):([^@\s]+)@", r"://\1:****@", val)
+
+        if secret_type == "PASSWORD":
+            return re.sub(r'("?(?:password|passwd|secret|api_key|access_token)"?\s*[:=]\s*["\'])[^\'"\s]+(["\'])', r'\1****\2', val, flags=re.IGNORECASE)
+
+        return f"{val[:3]}****" if len(val) >= 6 else "****"
 
     def inspect(self, prompt: str, system_prompt: str = "", conversation_history: List[Dict[str, str]] = None) -> List[AISecurityMatch]:
         matches: List[AISecurityMatch] = []
@@ -71,7 +105,7 @@ class AISecurityDetector:
             ))
 
         # 4. Sensitive Data Disclosure & Exfiltration
-        if re.search(r"(?:BEGIN (?:RSA|OPENSSH|PRIVATE) KEY|AKIA[0-9A-Z]{16}|[a-zA-Z0-9_-]{32,}\.(?:jwt|secret|key)|sk-[a-zA-Z0-9]{48})", text_to_check):
+        if re.search(r"(?:-----BEGIN [A-Z\s]+KEY-----|AKIA[0-9A-Z]{16}|[a-zA-Z0-9_-]{32,}\.(?:jwt|secret|key)|sk-[a-zA-Z0-9_-]{20,}|ghp_[a-zA-Z0-9]{36})", text_to_check):
             matches.append(AISecurityMatch(
                 rule_name="Sensitive API Secret Disclosure",
                 category="data_leakage",
@@ -111,3 +145,99 @@ class AISecurityDetector:
             ))
 
         return matches
+
+    def inspect_response(self, response: str, context: Optional[str] = None) -> Tuple[List[AISecurityMatch], List[AISecurityIndicator]]:
+        """
+        Inspects LLM output response text for secret disclosure, exposed credentials, private keys, and data exfiltration.
+        """
+        matches: List[AISecurityMatch] = []
+        indicators: List[AISecurityIndicator] = []
+
+        # 1. API Keys (OpenAI sk-, AWS AKIA, GitHub ghp_)
+        api_key_matches = re.findall(r"(sk-[a-zA-Z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36})", response)
+        for key in set(api_key_matches):
+            masked = self.mask_secret(key, "API_KEY")
+            indicators.append(AISecurityIndicator(type="API_KEY", location="response", masked_value=masked))
+            matches.append(AISecurityMatch(
+                rule_name="LLM Output API Secret Leakage",
+                category="data_leakage",
+                severity="CRITICAL",
+                confidence=99,
+                details=f"Exposed API secret key ({masked}) detected in generated LLM output response.",
+                mitre_tactic="Exfiltration",
+                mitre_technique="T1041"
+            ))
+
+        # 2. Private Keys (RSA / OpenSSH / EC / DSA / Generic)
+        if re.search(r"-----BEGIN (?:[A-Z0-9_-]+\s+)?PRIVATE KEY-----", response, re.IGNORECASE):
+            masked = self.mask_secret("-----BEGIN RSA PRIVATE KEY-----", "PRIVATE_KEY")
+            indicators.append(AISecurityIndicator(type="PRIVATE_KEY", location="response", masked_value=masked))
+            matches.append(AISecurityMatch(
+                rule_name="Private Key Exposure in Output",
+                category="data_leakage",
+                severity="CRITICAL",
+                confidence=99,
+                details="Private cryptographic key certificate header discovered in model generation output.",
+                mitre_tactic="Credential Access",
+                mitre_technique="T1552"
+            ))
+
+        # 3. JWT Tokens
+        jwt_matches = re.findall(r"\b(eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+)\b", response)
+        for jwt in set(jwt_matches):
+            masked = self.mask_secret(jwt, "JWT_TOKEN")
+            indicators.append(AISecurityIndicator(type="JWT_TOKEN", location="response", masked_value=masked))
+            matches.append(AISecurityMatch(
+                rule_name="Exposed JWT Bearer Token",
+                category="data_leakage",
+                severity="HIGH",
+                confidence=96,
+                details=f"Live JSON Web Token ({masked}) embedded in model output string.",
+                mitre_tactic="Credential Access",
+                mitre_technique="T1552"
+            ))
+
+        # 4. Database Connection Strings with Credentials
+        db_urls = re.findall(r"\b(?:postgres|postgresql|mysql|mongodb|redis):\/\/[a-zA-Z0-9_-]+:[^@\s]+@[a-zA-Z0-9_.-]+(?:\:[0-9]+)?(?:\/[a-zA-Z0-9_.-]+)?", response, re.IGNORECASE)
+        for db_url in set(db_urls):
+            masked = self.mask_secret(db_url, "DB_CREDENTIAL")
+            indicators.append(AISecurityIndicator(type="DB_CREDENTIAL", location="response", masked_value=masked))
+            matches.append(AISecurityMatch(
+                rule_name="Exposed Database Credentials URL",
+                category="data_leakage",
+                severity="CRITICAL",
+                confidence=98,
+                details=f"Database connection string containing plaintext credentials ({masked}) exposed in model output.",
+                mitre_tactic="Credential Access",
+                mitre_technique="T1552"
+            ))
+
+        # 5. Hardcoded Credentials / Passwords in Output
+        pwd_matches = re.findall(r'("?(?:password|passwd|secret|access_token)"?\s*[:=]\s*["\']([^"\'\s]{6,})["\'])', response, re.IGNORECASE)
+        for full_match, secret_val in set(pwd_matches):
+            masked = f'"{full_match.split(":")[0].strip()}": "****"'
+            indicators.append(AISecurityIndicator(type="PASSWORD", location="response", masked_value=masked))
+            matches.append(AISecurityMatch(
+                rule_name="Plaintext Password Disclosure",
+                category="data_leakage",
+                severity="HIGH",
+                confidence=92,
+                details="Plaintext authentication password or secret property revealed in generated output.",
+                mitre_tactic="Credential Access",
+                mitre_technique="T1552"
+            ))
+
+        # 6. Malicious Downstream Instructions / Exfiltration Commands
+        if re.search(r"\b(curl|wget)\b.*?\b(https?:\/\/[^\s]+)\b.*?\b(password|token|key|secret|credential)\b", response, re.IGNORECASE):
+            indicators.append(AISecurityIndicator(type="EXFILTRATION_COMMAND", location="response", masked_value="curl [EXFILTRATION_TARGET]"))
+            matches.append(AISecurityMatch(
+                rule_name="Downstream Secret Exfiltration Command",
+                category="data_leakage",
+                severity="CRITICAL",
+                confidence=95,
+                details="Generated model response contains curl/wget commands attempting secret transfer to external host.",
+                mitre_tactic="Exfiltration",
+                mitre_technique="T1041"
+            ))
+
+        return matches, indicators

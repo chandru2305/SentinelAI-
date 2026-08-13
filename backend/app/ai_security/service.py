@@ -10,6 +10,9 @@ from app.ai_security.schemas import (
     AISecurityInspectRequest,
     AISecurityMatch,
     AISecurityMetricsResponse,
+    AISecurityResponseInspectRequest,
+    AISecurityResponseDecision,
+    AISecurityIndicator,
 )
 from app.realtime.manager import manager as ws_manager
 from app.threats.models import ThreatRecord
@@ -130,6 +133,98 @@ class AISecurityService:
             timestamp=timestamp
         )
 
+    def inspect_llm_response(self, request: AISecurityResponseInspectRequest, db: Session) -> AISecurityResponseDecision:
+        start_time = time.time()
+        matches, indicators = self.detector.inspect_response(request.response, request.context)
+        
+        processing_time_ms = round((time.time() - start_time) * 1000, 2)
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        if not matches:
+            return AISecurityResponseDecision(
+                safe=True,
+                threat_type="None",
+                severity="SAFE",
+                confidence=1.0,
+                risk_score=0,
+                policy_decision="ALLOW",
+                explanation="No sensitive credentials, secret tokens, or exfiltration indicators discovered in model output response.",
+                indicators=[],
+                recommended_actions=["Response validated safe for delivery"],
+                model=request.model,
+                processing_time_ms=processing_time_ms,
+                timestamp=timestamp
+            )
+
+        # Risk calculation based on empirical matches
+        top_match = matches[0]
+        max_severity = "CRITICAL" if any(m.severity == "CRITICAL" for m in matches) else ("HIGH" if any(m.severity == "HIGH" for m in matches) else "MEDIUM")
+        
+        if max_severity == "CRITICAL":
+            risk_score = 96
+            policy_decision = "BLOCK"
+        elif max_severity == "HIGH":
+            risk_score = 82
+            policy_decision = "BLOCK"
+        else:
+            risk_score = 65
+            policy_decision = "WARN"
+
+        explanation = f"Detected {len(matches)} data exfiltration risk indicator(s): {top_match.details}"
+        recommended_actions = [
+            "Block model output response from returning to client",
+            "Rotate exposed credentials immediately",
+            "Sanitize model output generation templates"
+        ]
+
+        # Persist security event to database using safe masked indicators
+        record = ThreatRecord(
+            source=f"LLM Response ({request.model or 'ollama'})",
+            category="data_leakage",
+            rule_name=top_match.rule_name,
+            severity=max_severity,
+            risk_score=risk_score,
+            confidence=top_match.confidence,
+            priority="P1" if max_severity in ["CRITICAL", "HIGH"] else "P2",
+            indicators={"masked_indicators": [ind.model_dump() for ind in indicators]},
+            mitre={"tactic": top_match.mitre_tactic or "Exfiltration", "technique": top_match.mitre_technique or "T1041"},
+            recommendation="; ".join(recommended_actions),
+            raw_payload={"threat_type": top_match.rule_name, "model": request.model, "masked_count": len(indicators)},
+            resolved=False,
+            status="blocked" if policy_decision == "BLOCK" else "monitored",
+            processing_time=processing_time_ms / 1000.0,
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+
+        # Broadcast safe real-time event to WebSockets
+        ws_manager.broadcast_sync({
+            "type": "llm_response_threat",
+            "threat_type": top_match.rule_name,
+            "severity": max_severity,
+            "risk_score": risk_score,
+            "policy_decision": policy_decision,
+            "model": request.model,
+            "timestamp": timestamp,
+            "masked_indicators": [ind.masked_value for ind in indicators]
+        })
+
+        return AISecurityResponseDecision(
+            safe=False,
+            threat_type=top_match.rule_name,
+            severity=max_severity,
+            confidence=round(top_match.confidence / 100.0, 2),
+            risk_score=risk_score,
+            policy_decision=policy_decision,
+            explanation=explanation,
+            indicators=indicators,
+            recommended_actions=recommended_actions,
+            model=request.model,
+            processing_time_ms=processing_time_ms,
+            timestamp=timestamp
+        )
+
     def get_metrics(self, db: Session) -> AISecurityMetricsResponse:
         repo = SQLAlchemyThreatRepository(db)
         history = repo.list_history(limit=500)
@@ -139,7 +234,7 @@ class AISecurityService:
         threats_blocked = len([r for r in ai_records if r.severity in ["CRITICAL", "HIGH"]])
         prompt_injections = len([r for r in ai_records if r.category == "prompt_injection"])
         jailbreak_attempts = len([r for r in ai_records if r.category == "jailbreak"])
-        agent_violations = len([r for r in ai_records if r.category == "agent_threat"])
+        agent_violations = len([r for r in ai_records if r.category in ["agent_threat", "data_leakage"]])
         avg_risk = float(sum(r.risk_score for r in ai_records) / max(len(ai_records), 1)) if ai_records else 18.5
 
         return AISecurityMetricsResponse(
