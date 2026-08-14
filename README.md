@@ -1,230 +1,130 @@
-# SentinelAI — Autonomous AI Threat Intelligence & Real-Time SOC Telemetry Platform
+# SentinelAI
 
-SentinelAI is a production-grade, enterprise-ready Security Operations Center (SOC) platform powered by AI model telemetry, rule-based threat detection engines, and real-time WebSocket event streams.
+SentinelAI is a production-hardened AI Security Platform designed to protect AI applications, LLM applications, RAG pipelines, and AI agents from AI-specific security threats. It sits inline between clients and AI providers to inspect, score, and enforce security policies on prompts and model responses in real-time.
 
----
+## 1. Product Overview
+SentinelAI protects the modern AI attack surface by validating prompts, restricting dangerous AI agent actions, sanitizing LLM responses, and ensuring safe Retrieval-Augmented Generation (RAG) execution.
 
-## 🏛️ Architecture & System Design
+## 2. Original Product Vision
+The original and permanent product boundary for SentinelAI is exclusively AI application security. It does not operate as a traditional network SOC, firewall, or EDR. The vision strictly focuses on Prompt Security, Response Security, RAG Security, Agent Security, and AI Risk Policy enforcement.
 
-```
-                     ┌──────────────────────────────────────────────┐
-                     │          React + TypeScript Frontend         │
-                     │          Vite SPA, Tailwind & Recharts       │
-                     └──────────────────────┬───────────────────────┘
-                                            │
-                             ┌──────────────┴──────────────┐
-                             │                             │
-                     HTTP / REST API                WebSocket / WSS
-               (JWT Authorization Headers)      (Query Token / Backoff)
-                             │                             │
-                             └──────────────┬──────────────┘
-                                            │
-                     ┌──────────────────────▼───────────────────────┐
-                     │            FastAPI Backend Engine            │
-                     │          ConnectionManager & Routers         │
-                     └───────┬──────────────┬──────────────┬────────┘
-                             │              │              │
-             ┌───────────────┴────┐ ┌───────┴────────┐ ┌───┴────────────────┐
-             │ SQLAlchemy Database│ │ Threat Engine  │ │  AI / Ollama Module│
-             │ SQLite / Postgres  │ │ Rules & MITRE  │ │  Offline Fallback  │
-             └────────────────────┘ └────────────────┘ └────────────────────┘
-```
+## 3. Core AI Security Capabilities
+- **Prompt Security:** Detects prompt injections, jailbreak attempts, and system prompt extraction attacks.
+- **LLM Response Security:** Inspects outputs for data exfiltration, sensitive data leakage, and enforces secret masking before returning data to the client.
+- **RAG Security:** Prevents indirect prompt injection, detects document poisoning, and validates content provenance.
+- **AI Agent Security:** Enforces permission matrices to detect and block destructive or unauthorized agent actions.
+- **Inline Gateway:** Operates as a reverse proxy, inspecting requests before they reach the provider and responses before they reach the client.
 
-SentinelAI features a decoupled architecture:
-1. **Frontend**: React 18 + TypeScript + Vite single page application with modern CSS tokens, dark mode SOC design system, live heatmaps, and Recharts graphs.
-2. **Backend**: FastAPI asynchronous Python microservice with SQLAlchemy ORM, SQLite fallback support, PostgreSQL compatibility, and Alembic database migration management.
-3. **Real-Time SOC Channel**: Asynchronous WebSocket event broker with exponential backoff reconnection loops and thread-safe event loop dispatchers.
-4. **Threat Detection Engine**: Rule-based heuristic pattern analyzer mapping detected payloads directly to MITRE ATT&CK® Enterprise tactics and techniques.
-5. **AI Telemetry Assistant**: Ollama LLM integration providing automated threat analysis, context-aware remediation, and robust offline fallback when local LLMs are unreachable.
+## 4. Architecture
+SentinelAI is designed with a decoupled architecture:
+1. **Frontend**: React 18 + TypeScript single page application (AI Security Center).
+2. **Backend Engine**: FastAPI asynchronous microservice orchestrating security detectors and policy decisions.
+3. **Real-Time SOC Channel**: Asynchronous WebSocket event broker broadcasting AI security incidents.
+4. **AI Security Engine**: Core validation logic parsing heuristics, risk scores, and generating ALLOW / WARN / BLOCK decisions.
 
----
-
-## 🛠️ Technology Stack
-
+## 5. Technology Stack
 | Layer | Technology |
 |---|---|
-| **Frontend Core** | React 18, TypeScript, Vite, React Router 6 |
-| **Frontend Styling** | Modern Vanilla CSS Custom Properties (Tokens), Glassmorphism, Dark UI |
-| **Data Visualization** | Recharts, Custom Inline SVG Heatmaps |
-| **Backend Core** | Python 3.10+, FastAPI, Uvicorn |
-| **Database & ORM** | SQLAlchemy 2.0, SQLite 3 (Dev Fallback), PostgreSQL (Production), Alembic Migrations |
+| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS, Recharts |
+| **Backend** | Python 3.13, FastAPI, Uvicorn |
+| **Database & ORM** | SQLAlchemy 2.0, SQLite 3 (Default), Alembic |
 | **Security & Auth** | OAuth2 Bearer, Passlib (Bcrypt), Python-Jose (JWT) |
-| **Real-Time Communication** | Native Async WebSockets (`fastapi.WebSocket`) |
-| **AI Infrastructure** | Ollama API Integration (`httpx` HTTP Client) |
+| **Real-Time** | Native Async WebSockets (`fastapi.WebSocket`) |
+| **AI Validation Provider** | Ollama API Integration (`httpx` HTTP Client) |
 
----
-
-## 📂 Project Structure
-
-```
+## 6. Project Structure
+```text
 SentinelAI/
 ├── backend/
-│   ├── alembic/              # Database migration scripts & versions
+│   ├── alembic/              # Database schema migrations
 │   ├── app/
-│   │   ├── ai/               # Ollama AI service, router, schemas, & client
-│   │   ├── api/              # API router registrations, dashboard, health endpoints
-│   │   ├── auth/             # JWT authentication service, dependencies, models
-│   │   ├── core/             # Settings, Pydantic configuration, security environment
-│   │   ├── database/         # Engine fallback initialization & SQLAlchemy Base
-│   │   ├── realtime/         # ConnectionManager & WebSocket router (/ws)
-│   │   ├── tests/            # Automated test suite (health, auth, threats, websocket)
-│   │   ├── threats/          # Heuristic rules, MITRE mappings, repository, service
-│   │   └── main.py           # FastAPI application entry point & CORS configuration
-│   ├── alembic.ini           # Alembic configuration
-│   ├── requirements.txt      # Python dependencies
-│   └── sentinelai.db         # SQLite local database file
-├── docs/                     # Module reports & technical specs
-├── frontend/
-│   ├── src/
-│   │   ├── components/       # Dashboard, MITRE heatmap, alerts, and card components
-│   │   ├── config/           # API host and environment configuration
-│   │   ├── hooks/            # Custom hooks (useWebSocket, etc.)
-│   │   ├── layouts/          # DashboardLayout & ProtectedLayout wrappers
-│   │   ├── pages/            # Dashboard, AI, Detection, & Auth views
-│   │   ├── services/         # API abstraction layer (api, threatService, dashboardService)
-│   │   └── utils/            # JWT token storage utilities
-│   ├── index.html            # Vite HTML entry point
-│   ├── package.json          # Node dependencies and scripts
-│   └── vite.config.js        # Vite compiler configuration
-├── .env.example              # Root environment template
-└── README.md                 # System documentation
+│   │   ├── ai/               # AI provider connections (Ollama)
+│   │   ├── ai_security/      # Core AI Security Engine (Prompt, Response, RAG, Agent)
+│   │   ├── api/              # API router registrations
+│   │   ├── auth/             # JWT authentication
+│   │   ├── gateway/          # Inline AI Security Gateway service
+│   │   ├── realtime/         # WebSocket manager
+│   │   ├── tests/            # Full automated test suite
+│   │   └── main.py           # FastAPI entry point
+│   ├── alembic.ini           
+│   └── requirements.txt      
+├── docs/                     # Technical specifications and reports
+├── frontend/                 # React UI for AI Security Center
+└── .env.example              # Environment variables
 ```
 
----
+## 7. Prompt Security
+Inspects user input sequences for hidden commands, malicious framing, or role-playing jailbreaks designed to subvert system instructions.
 
-## 🚀 Setup & Execution Instructions
+## 8. LLM Response Security
+Post-generation inspection to guarantee the LLM is not inadvertently leaking system tokens, internal IPs, passwords, or executing data exfiltration.
 
-### Prerequisites
-- **Python**: 3.10 or higher
-- **Node.js**: v18.0 or higher
-- **Ollama** *(Optional for AI features)*: Installed and listening on `http://localhost:11434`
+## 9. RAG Security
+Analyzes retrieved context chunks to ensure external data fetched via RAG does not contain indirect prompt injections (document poisoning).
 
----
+## 10. AI Agent Security
+Validates intended tool calls or agent actions against an environment-aware policy matrix to prevent destructive system actions.
 
-### 1. Environment Configuration
+## 11. Inline AI Security Gateway
+Acts as a transparent proxy. The client sends chat requests to SentinelAI. The Gateway inspects the prompt; if ALLOWED, it passes it to the upstream LLM (e.g., Ollama). Once the LLM generates a response, it is intercepted, inspected, and then returned to the client.
 
-Copy the template environment file in the project root or backend folder:
+## 12. Risk / Policy Engine
+Computes a final risk score (0-100) based on all detectors, enforcing the global ALLOW, WARN, or BLOCK policy.
 
-```bash
-cp .env.example backend/.env
-```
+## 13. WebSocket Real-Time Security
+Threat telemetry is broadcasted via secure WebSocket connections (`/api/v1/ws`) to the AI Security Center for real-time dashboard updates.
 
-**Key Environment Variables**:
-- `APP_ENV`: Set to `development` or `production`.
-- `JWT_SECRET`: Secret key used for signing JWT tokens.
-- `DATABASE_URL`: Primary database connection string (e.g. `postgresql://user:pass@localhost:5432/sentinelai`). If PostgreSQL is unreachable, SentinelAI automatically falls back to local SQLite (`sentinelai.db`).
-- `OLLAMA_BASE_URL`: Ollama API base URL (Default: `http://localhost:11434`).
-- `OLLAMA_MODEL`: Target model name (Default: `llama3`).
+## 14. Authentication
+Standard JWT (JSON Web Token) authentication is required for both the REST API and the WebSocket telemetry channel.
 
----
+## 15. Database / Alembic
+Data persistence is handled by SQLAlchemy with SQLite by default. Schema updates are strictly managed via Alembic migrations.
 
-### 2. Backend Startup
+## 16. Ollama Setup
+The Gateway currently targets Ollama as the active local LLM provider. Ensure Ollama is running and accessible (e.g., `http://localhost:11434`) with the model specified in the configuration (e.g., `llama3`).
 
-1. Navigate to the backend directory and activate your virtual environment:
+## 17. Environment Variables
+Copy `.env.example` to `backend/.env`. Key configurations:
+- `JWT_SECRET`: Random string for token signing.
+- `DATABASE_URL`: Connection string (defaults to SQLite).
+- `OLLAMA_URL`: Connection string for the LLM provider.
+- `OLLAMA_MODEL`: Target model (e.g., `llama3`).
 
+## 18. Local Development
+1. **Backend**: `python -m venv .venv`, `pip install -r requirements.txt`, `alembic upgrade head`, `python -m uvicorn app.main:app --port 8000`
+2. **Frontend**: `npm install`, `npm run dev`
+
+## 19. Testing
+Run the backend test suite:
 ```bash
 cd backend
-python -m venv .venv
-# On Windows PowerShell:
-.\.venv\Scripts\Activate.ps1
-# On Linux/macOS:
-source .venv/bin/activate
-```
-
-2. Install backend dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-3. Execute database migrations:
-
-```bash
-alembic upgrade head
-```
-
-4. Launch the FastAPI server with Uvicorn:
-
-```bash
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-The backend interactive API documentation (Swagger UI) is available at `http://127.0.0.1:8000/docs`.
-
----
-
-### 3. Frontend Startup
-
-1. Open a new terminal and navigate to the frontend directory:
-
-```bash
-cd frontend
-```
-
-2. Install Node dependencies:
-
-```bash
-npm install
-```
-
-3. Launch the Vite development server:
-
-```bash
-npm run dev
-```
-
-Access the SentinelAI SOC Dashboard in your browser at `http://localhost:5173`.
-
-**Default Analyst Credentials**:
-- **Username / Email**: `admin` or `admin@sentinelai.local`
-- **Password**: `admin123`
-
----
-
-## ⚡ Key Capabilities & Features
-
-### 🛡️ Rule-Based Threat Detection
-Detects SQL Injection (`' OR '1'='1`), Cross-Site Scripting (`<script>alert()</script>`), Command Injection (`rm -rf`), Directory Traversal, Ransomware indicators, and Obfuscated payloads. Automatically calculates priority scores (`P1` - `P4`) and severity levels.
-
-### ⚔️ MITRE ATT&CK® Heatmap Coverage
-Dynamically maps detected threats to Enterprise MITRE tactics (Initial Access, Execution, Defense Evasion, etc.) and technique IDs (`T1190`, `T1059.007`, etc.) based on database records.
-
-### 📡 Real-Time WebSocket Telemetry Channel
-Clients connect via `/api/v1/ws?token=<JWT>`. Whenever a threat is analyzed and saved to the database, a JSON event payload is thread-safely broadcast across all active client sockets, updating live threat counters, feeds, and heatmaps without page reloads.
-
-### 🤖 AI Engine & Offline Resiliency
-Analyzes threat contexts using local Ollama LLMs. If Ollama is offline or uninstalled, SentinelAI safely switches to rule-based fallback messaging, ensuring 100% uptime for critical SOC operations.
-
----
-
-## 🧪 Testing Commands
-
-### Backend Automated Test Suite
-Run the full backend unit test suite covering health, authentication, threat detection, statistics, MITRE aggregation, and WebSocket security:
-
-```bash
-cd backend
-$env:APP_ENV="development" # PowerShell
 python -m unittest discover app/tests
 ```
 
-### End-to-End API Integration Script
-Execute the full API and WebSocket integration verification script:
-
+Build the frontend:
 ```bash
-cd backend
-python C:\Users\CHANDRU\.gemini\antigravity-ide\brain\aaf99e63-4a68-4c3d-843d-5a0e338dd721\scratch\test_integration_module13.py
+npm run build --prefix frontend
 ```
 
-### Frontend Production Build Test
-Verify TypeScript compilation and bundle production builds:
-
+## 20. Clean-Machine Validation
+SentinelAI can be validated on a fresh machine sequence:
 ```bash
-cd frontend
+git clone <repo>
+cd SentinelAI-/backend
+python -m venv .venv
+# activate venv
+pip install -r requirements.txt
+alembic upgrade head
+python -m uvicorn app.main:app --port 8000
+
+# In another terminal:
+cd SentinelAI-/frontend
+npm ci
 npm run build
 ```
 
----
-
-## 📄 License & Attribution
-Designed & developed for advanced Security Operations Center monitoring with automated threat telemetry.
+## 21. Current Limitations
+- Currently, Ollama is the only fully implemented and verified LLM provider.
+- The Global Attack Map visualization does not use real external threat intelligence or live geolocation data.
+- Cloud LLM API integration (e.g., OpenAI, Anthropic) requires extending the Gateway provider adapter.
+- E2E browser automation tests (e.g., Playwright) are not currently implemented.
