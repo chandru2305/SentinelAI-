@@ -18,7 +18,8 @@ from app.ai.schemas import (
     AISecurityAnalysisResponse,
 )
 from app.ai.service import AIService
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, get_db_session
+from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["ai"], dependencies=[Depends(get_current_user)])
 service = AIService()
@@ -121,12 +122,20 @@ def analyze_security(request: AISecurityAnalysisRequest) -> AISecurityAnalysisRe
 
 
 @router.post("/chat", response_model=AIChatResponse)
-def chat(request: AIChatRequest) -> AIChatResponse:
+def chat(request: AIChatRequest, db: Session = Depends(get_db_session)) -> AIChatResponse:
+    from app.gateway.service import GatewayService
+    from app.gateway.schemas import GatewayChatRequest
+    gateway = GatewayService()
     try:
-        response = service.chat(request.message, model=request.model)
-        return AIChatResponse(message=response['message'])
-    except AIEngineError as exc:
-        logger.error("AI chat failed: %s", exc)
+        gw_request = GatewayChatRequest(
+            provider="ollama",
+            model=request.model or "llama3:latest",
+            messages=[{"role": "user", "content": request.message}]
+        )
+        res = gateway.chat(gw_request, db)
+        return AIChatResponse(message=res.final_response or "Blocked by security policy")
+    except Exception as exc:
+        logger.error("Legacy chat gateway proxy failed: %s", exc)
         raise HTTPException(status_code=502, detail=str(exc))
 
 

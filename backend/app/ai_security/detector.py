@@ -118,28 +118,32 @@ class AISecurityDetector:
 
         return matches
 
-    def inspect_agent_action(self, agent_id: str, tool_name: str, tool_arguments: Dict[str, Any]) -> List[AISecurityMatch]:
+    def inspect_agent_action(self, agent_id: str, action: str, tool_name: str, target: Optional[str], parameters: Dict[str, Any]) -> List[AISecurityMatch]:
         matches: List[AISecurityMatch] = []
-        arg_str = str(tool_arguments)
+        arg_str = str(parameters)
+        target_str = str(target) if target else ""
 
-        if re.search(r"\b(rm -rf|drop database|drop table|format c:|del /f /s|shutdown|reboot)\b", arg_str, re.IGNORECASE):
+        # Check action, tool, target, and args for dangerous patterns
+        combined_str = f"{action} {tool_name} {target_str} {arg_str}"
+
+        if re.search(r"\b(rm -rf|drop database|drop table|format c:|del /f /s|shutdown|reboot)\b", combined_str, re.IGNORECASE):
             matches.append(AISecurityMatch(
                 rule_name="Unsafe Autonomous Agent Action",
                 category="agent_threat",
                 severity="CRITICAL",
                 confidence=98,
-                details=f"Agent '{agent_id}' invoked destructive tool command '{tool_name}'.",
+                details=f"Agent '{agent_id}' attempted a highly destructive command.",
                 mitre_tactic="Impact",
                 mitre_technique="T1485"
             ))
 
-        if re.search(r"\b(eval\(|exec\(|system\(|passthru\(|popen\()\b", arg_str, re.IGNORECASE):
+        if re.search(r"\b(eval\(|exec\(|system\(|passthru\(|popen\()\b", combined_str, re.IGNORECASE):
             matches.append(AISecurityMatch(
-                rule_name="Malicious Code Execution Tool Parameter",
+                rule_name="Malicious Code Execution",
                 category="agent_threat",
                 severity="HIGH",
                 confidence=95,
-                details=f"Agent '{agent_id}' attempted arbitrary code execution via tool parameter.",
+                details=f"Agent '{agent_id}' attempted arbitrary code execution.",
                 mitre_tactic="Execution",
                 mitre_technique="T1059"
             ))
@@ -238,6 +242,71 @@ class AISecurityDetector:
                 details="Generated model response contains curl/wget commands attempting secret transfer to external host.",
                 mitre_tactic="Exfiltration",
                 mitre_technique="T1041"
+            ))
+
+        return matches, indicators
+
+    def inspect_rag_document(self, content: str) -> Tuple[List[AISecurityMatch], List[AISecurityIndicator]]:
+        """
+        Inspects RAG document chunks for Indirect Prompt Injections, Document Poisoning, and Data Leakage.
+        """
+        matches: List[AISecurityMatch] = []
+        indicators: List[AISecurityIndicator] = []
+        text_to_check = content.strip()
+
+        # 1. Indirect Prompt Injection
+        if re.search(r"\b(system (override|note)|new instructions|ignore (previous|all|above)|forget (previous|all|above)|important instructions?)\b.*?:?", text_to_check, re.IGNORECASE) and re.search(r"\b(you must|act as|print|output)\b", text_to_check, re.IGNORECASE):
+            matches.append(AISecurityMatch(
+                rule_name="Indirect Prompt Injection",
+                category="prompt_injection",
+                severity="CRITICAL",
+                confidence=95,
+                details="Hidden instructions attempting to hijack the LLM detected in document chunk.",
+                mitre_tactic="Initial Access",
+                mitre_technique="T1190"
+            ))
+
+        # 2. Document Poisoning (e.g. injecting biases or malicious data)
+        # Check for excessive repetition of URLs with malicious CTA or SEO spam patterns
+        urls = re.findall(r"https?:\/\/[^\s]+", text_to_check, re.IGNORECASE)
+        if len(urls) >= 5 and re.search(r"\b(click|visit|download|buy)\b", text_to_check, re.IGNORECASE):
+            matches.append(AISecurityMatch(
+                rule_name="Document Poisoning (Spam/Malicious Links)",
+                category="document_poisoning",
+                severity="HIGH",
+                confidence=85,
+                details="Suspiciously high concentration of URLs with manipulative calls to action.",
+                mitre_tactic="Initial Access",
+                mitre_technique="T1190"
+            ))
+
+        # 3. Data Leakage (Reuse existing response inspection logic for secrets in RAG docs)
+        api_key_matches = re.findall(r"(sk-[a-zA-Z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ghp_[a-zA-Z0-9]{36})", text_to_check)
+        for key in set(api_key_matches):
+            masked = self.mask_secret(key, "API_KEY")
+            indicators.append(AISecurityIndicator(type="API_KEY", location="rag_document", masked_value=masked))
+            matches.append(AISecurityMatch(
+                rule_name="Exposed API Secret in Document",
+                category="data_leakage",
+                severity="CRITICAL",
+                confidence=99,
+                details=f"API secret key ({masked}) detected in source document.",
+                mitre_tactic="Credential Access",
+                mitre_technique="T1552"
+            ))
+            
+        jwt_matches = re.findall(r"\b(eyJ[a-zA-Z0-9_-]{10,}\.eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+)\b", text_to_check)
+        for jwt in set(jwt_matches):
+            masked = self.mask_secret(jwt, "JWT_TOKEN")
+            indicators.append(AISecurityIndicator(type="JWT_TOKEN", location="rag_document", masked_value=masked))
+            matches.append(AISecurityMatch(
+                rule_name="Exposed JWT in Document",
+                category="data_leakage",
+                severity="HIGH",
+                confidence=96,
+                details=f"JSON Web Token ({masked}) embedded in source document.",
+                mitre_tactic="Credential Access",
+                mitre_technique="T1552"
             ))
 
         return matches, indicators

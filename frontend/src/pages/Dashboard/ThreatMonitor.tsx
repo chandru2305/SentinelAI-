@@ -1,17 +1,21 @@
-import { useState } from 'react';
-import { mockThreatActivity } from '../../components/dashboard/ThreatData';
-import type { ThreatActivity } from '../../components/dashboard/ThreatData';
+import { useState, useEffect } from 'react';
+import { dashboardService, DashboardActivity } from '../../services/dashboardService';
 
 const filters = ['All', 'Critical', 'High', 'Medium', 'Low'] as const;
 type Filter = typeof filters[number];
 
 const ThreatMonitor = () => {
   const [activeFilter, setActiveFilter] = useState<Filter>('All');
+  const [threats, setThreats] = useState<DashboardActivity[]>([]);
+
+  useEffect(() => {
+    dashboardService.getActivity().then(setThreats).catch(() => setThreats([]));
+  }, []);
 
   const filteredThreats = activeFilter === 'All'
-    ? mockThreatActivity
-    : mockThreatActivity.filter(
-        (t) => t.severity === activeFilter.toLowerCase()
+    ? threats
+    : threats.filter(
+        (t) => t.severity.toLowerCase() === activeFilter.toLowerCase()
       );
 
   return (
@@ -20,7 +24,7 @@ const ThreatMonitor = () => {
         <div className="page-header-left">
           <h1>Threat Monitor</h1>
           <p className="page-header-subtitle">
-            Real-time detection center — {mockThreatActivity.length} active threats
+            Real-time detection center — {threats.length} active threats
           </p>
         </div>
         <button className="action-btn primary">Export Report</button>
@@ -101,7 +105,7 @@ const ThreatMonitor = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredThreats.map((item: ThreatActivity) => (
+              {filteredThreats.map((item: DashboardActivity) => (
                 <tr key={item.id}>
                   <td><span className="threat-time">{item.time}</span></td>
                   <td>
@@ -113,7 +117,7 @@ const ThreatMonitor = () => {
                           item.severity === 'medium' ? 'var(--status-medium)' :
                           'var(--status-low)'
                       }} />
-                      {item.threat}
+                      {item.threat || item.rule_name || 'Unknown Threat'}
                     </div>
                   </td>
                   <td><span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>{item.source}</span></td>

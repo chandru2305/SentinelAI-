@@ -20,23 +20,28 @@ class OllamaProvider:
 
     def health(self) -> dict[str, Any]:
         try:
-            response = self.client.get('/health')
-            return normalize_response(response)
-        except AIProviderError as exc:
+            # client.get parses JSON, but '/' returns plain text.
+            with self.client._client() as c:
+                response = c.get('/')
+                response.raise_for_status()
+            return {"version": "Ollama is running"}
+        except Exception as exc:
             logger.error('Ollama health failed: %s', exc)
-            raise
+            raise AIProviderError('Ollama health failed') from exc
 
     def models(self) -> list[AIModelInfo]:
         try:
-            raw_models = self.client.get('/models')
+            raw_models = self.client.get('/api/tags')
             normalized = normalize_response(raw_models)
+            # /api/tags returns {"models": [...]}
+            models_list = normalized.get("models", [])
             return [
                 AIModelInfo(
                     name=str(model.get('name', 'unknown')),
-                    loaded=bool(model.get('loaded', False)),
-                    description=str(model.get('description', '')) if model.get('description') is not None else None,
+                    loaded=True,
+                    description=None,
                 )
-                for model in normalized
+                for model in models_list
                 if isinstance(model, dict)
             ]
         except AIProviderError as exc:
@@ -47,16 +52,34 @@ class OllamaProvider:
         request_model = model or self.model
         try:
             response = self.client.post(
-                '/generate',
+                '/api/generate',
                 json={
                     'model': request_model,
                     'prompt': prompt,
+                    'stream': False,
                     'timeout': int(settings.ollama_timeout),
                 },
             )
             return normalize_response(response)
         except AIProviderError as exc:
             logger.error('Ollama generate failed: %s', exc)
+            raise
+
+    def chat(self, messages: list[dict[str, Any]], model: str | None = None) -> dict[str, Any]:
+        request_model = model or self.model
+        try:
+            response = self.client.post(
+                '/api/chat',
+                json={
+                    'model': request_model,
+                    'messages': messages,
+                    'stream': False,
+                    'timeout': int(settings.ollama_timeout),
+                },
+            )
+            return normalize_response(response)
+        except AIProviderError as exc:
+            logger.error('Ollama chat failed: %s', exc)
             raise
 
     def change_model(self, model: str) -> bool:

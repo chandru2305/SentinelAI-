@@ -18,6 +18,10 @@ class AIProvider(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def chat(self, messages: list[dict[str, Any]], model: str | None = None) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def status(self) -> AIStatusInfo:
         raise NotImplementedError
 
